@@ -12,6 +12,9 @@ import shutil
 import socket
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = 'ghcr.io/immich-app/immich-machine-learning:v3.2.0-rocm@sha256:ec7d7ec1e624571edd92efd0c4820c8eda91c21956140b87fc2af93e0f33dc86'
@@ -53,15 +56,27 @@ def load_instance(directory):
         raise ValueError('compose.yamlが変更されています。管理情報と差分を確認してください')
     return state
 
-def initialize(directory, project, port, video_gid, render_gid, image):
+def initialize(directory, project, port, video_gid, render_gid, image, replace_image=False):
     directory = Path(directory).expanduser().resolve()
     if not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,49}', project) or not 1 <= port <= 65535:
         raise ValueError('プロジェクト名は小文字英数字・ハイフン・下線、ポートは1〜65535で指定してください')
     expected = dict(format=1, directory=str(directory), project=project, port=port, image=image)
     if (directory / MARKER).exists():
         state = load_instance(directory)
-        if any(state.get(k) != v for k, v in expected.items()):
+        if any(state.get(k) != v for k, v in expected.items() if k != 'image'):
             raise ValueError('既存の導入設定と異なります。別の新規ディレクトリを指定してください')
+        if state['image'] != image:
+            if not replace_image:
+                raise ValueError('推論イメージのソースが変わっています。再構築する場合は --rebuild を指定してください')
+            env_path = directory / '.env'
+            env = env_path.read_text()
+            old_line = 'IMMICH_ML_IMAGE=' + state['image'] + '\n'
+            new_line = 'IMMICH_ML_IMAGE=' + image + '\n'
+            if old_line not in env and new_line not in env:
+                raise ValueError('.envの推論イメージと管理情報が一致しません')
+            env_path.write_text(env.replace(old_line,new_line))
+            state['image'] = image
+            (directory / MARKER).write_text(json.dumps(state,ensure_ascii=False,indent=2)+'\n')
         return state
     if directory.exists() and any(directory.iterdir()):
         raise ValueError('空でない導入先には書き込みません: ' + str(directory))
@@ -77,7 +92,7 @@ def initialize(directory, project, port, video_gid, render_gid, image):
         'DB_USERNAME=postgres',
         'DB_DATABASE_NAME=immich',
         'DB_PASSWORD=' + secrets.token_hex(24),
-        'IMMICH_PORT=' + str(port),
+        'IMMICH_HTTP_PORT=' + str(port),
         'IMMICH_ML_IMAGE=' + image,
         'IMMICH_VIDEO_GID=' + str(video_gid),
         'IMMICH_RENDER_GID=' + str(render_gid), '',
@@ -181,7 +196,7 @@ def install(args, directory):
     import grp
     video = grp.getgrnam('video').gr_gid
     render = Path('/dev/kfd').stat().st_gid
-    state = initialize(directory, args.project, args.port, video, render, image_tag())
+    state = initialize(directory, args.project, args.port, video, render, image_tag(), replace_image=args.rebuild)
     run(compose(directory, 'config', '--quiet'))
     exists = subprocess.run(['docker', 'image', 'inspect', state['image']], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
     if not exists or args.rebuild:
@@ -189,6 +204,17 @@ def install(args, directory):
     run(compose(directory, 'pull', 'immich-server', 'redis', 'database'))
     warmup(directory)
     run(compose(directory, 'up', '-d', '--wait', '--wait-timeout', '600'))
+    deadline = time.monotonic() + 120
+    while True:
+        try:
+            with urllib.request.urlopen(f'http://127.0.0.1:{state["port"]}/api/server/ping', timeout=10) as response:
+                if json.load(response).get('res') == 'pong':
+                    break
+        except (OSError, ValueError, urllib.error.URLError):
+            pass
+        if time.monotonic() >= deadline:
+            raise ValueError('公開ポート経由でImmich APIに接続できません。compose logsで確認してください')
+        time.sleep(3)
     print(f'導入完了: http://サーバーのIP:{state["port"]}\n初回アクセスで管理者を登録してください。\n導入先: {directory}', flush=True)
 
 def main():

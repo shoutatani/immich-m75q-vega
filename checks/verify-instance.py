@@ -10,6 +10,8 @@ from pathlib import Path
 import secrets
 import shutil
 import subprocess
+import struct
+import zlib
 import sys
 import time
 import urllib.request
@@ -50,7 +52,14 @@ def upload(path):
     parts = []
     for name in ['fileCreatedAt','fileModifiedAt']:
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n2026-10-10T00:00:00.000Z\r\n'.encode())
-    parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="assetData"; filename="{path.name}"\r\nContent-Type: image/png\r\n\r\n'.encode()+path.read_bytes()+b'\r\n')
+    # ピクセルは変えずに毎回異なる識別子を付け、既存画像の重複判定を避ける。
+    data = path.read_bytes()
+    if data[:8] != b'\x89PNG\r\n\x1a\n' or data[-8:-4] != b'IEND':
+        raise ValueError('検証用PNGの形式が不正です')
+    text = b'Comment\x00' + uuid.uuid4().hex.encode()
+    chunk = b'tEXt' + text
+    data = data[:-12] + struct.pack('>I',len(text)) + chunk + struct.pack('>I',zlib.crc32(chunk)&0xffffffff) + data[-12:]
+    parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="assetData"; filename="{path.name}"\r\nContent-Type: image/png\r\n\r\n'.encode()+data+b'\r\n')
     parts.append(f'--{boundary}--\r\n'.encode())
     return str(uuid.UUID(api('/assets', b''.join(parts), headers={'Content-Type':'multipart/form-data; boundary='+boundary})['id']))
 
@@ -68,16 +77,18 @@ def exec_ml(*command):
 
 credential_file = directory / 'test-admin-credentials.json'
 if args.initialize_test_admin:
+    user_count = int(sql('SELECT count(*) FROM "user";'))
     if credential_file.exists():
         credentials = json.loads(credential_file.read_text())
     else:
         # 既存ユーザーがいる環境では管理者を作成しない。
-        if int(sql('SELECT count(*) FROM "user";')) != 0:
+        if user_count != 0:
             raise ValueError('ユーザーが登録済みです。テスト管理者の自動作成は新規環境専用です')
         credentials = {'email':'gpu-test@example.invalid', 'password':secrets.token_urlsafe(30), 'name':'GPU検証用管理者'}
         fd = os.open(credential_file, os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0o600)
         with os.fdopen(fd,'w') as stream:
             json.dump(credentials,stream)
+    if user_count == 0:
         api('/auth/admin-sign-up', credentials)
 else:
     credentials = {'email':input('この環境の管理者メール: '), 'password':getpass.getpass('パスワード: ')}
@@ -120,17 +131,7 @@ for round_number in range(2):
     suffix = '-after-restart' if round_number else ''
     license_id = upload(ROOT/'samples'/('license-sample'+suffix+'.png'))
     blank_id = upload(ROOT/'samples'/('blank'+suffix+'.png'))
-    # 2回目の顔画像にはPNGメタデータを追加し、重複判定による処理省略を避ける。
-    face_path = ROOT/'samples/astronaut.png'
-    if round_number:
-        import struct,zlib
-        data = face_path.read_bytes()
-        text = b'Comment\x00restart-validation'
-        chunk = b'tEXt' + text
-        data = data[:-12] + struct.pack('>I',len(text)) + chunk + struct.pack('>I',zlib.crc32(chunk)&0xffffffff) + data[-12:]
-        face_path = evidence/'astronaut-after-restart.png'
-        face_path.write_bytes(data)
-    face_id = upload(face_path)
+    face_id = upload(ROOT/'samples/astronaut.png')
     for asset_id in [license_id,blank_id,face_id]:
         wait_for(lambda: sql(f'SELECT ("ocrAt" IS NOT NULL)::int FROM asset_job_status WHERE "assetId"=\'{asset_id}\';') == '1', 'OCR保存')
     lines = api('/assets/'+license_id+'/ocr')
@@ -139,7 +140,9 @@ for round_number in range(2):
     assert api('/assets/'+blank_id+'/ocr') == []
     found = wait_for(lambda: any(x['id']==license_id for x in api('/search/metadata',{'ocr':'運転免許証','size':100})['assets']['items']), 'OCR検索')
     face_count = wait_for(lambda: int(sql(f'SELECT count(*) FROM asset_face WHERE "assetId"=\'{face_id}\';')), '顔情報の保存')
-    round_result = {'afterRestart':bool(round_number),'ocrLines':len(lines),'ocrCharacters':sum(len(x['text']) for x in lines),'blankLines':0,'ocrSearch':bool(found),'facesStored':face_count}
+    wait_for(lambda: sql(f'SELECT ("facesRecognizedAt" IS NOT NULL)::int FROM asset_job_status WHERE "assetId"=\'{face_id}\';') == '1', '顔認識ジョブの完了')
+    wait_for(lambda: int(sql(f'SELECT count(*) FROM smart_search WHERE "assetId"=\'{face_id}\';')) == 1, 'スマート検索の特徴保存')
+    round_result = {'assetIds':[license_id,blank_id,face_id], 'smartSearchStored':True, 'afterRestart':bool(round_number),'ocrLines':len(lines),'ocrCharacters':sum(len(x['text']) for x in lines),'blankLines':0,'ocrSearch':bool(found),'facesStored':face_count}
     results['rounds'].append(round_result)
     (evidence/'verification.json').write_text(json.dumps(results,ensure_ascii=False,indent=2)+'\n')
     print(json.dumps(round_result,ensure_ascii=False), flush=True)

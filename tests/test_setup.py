@@ -17,7 +17,9 @@ class SetupTests(unittest.TestCase):
             env = (root / '.env').read_text()
             self.assertIn('UPLOAD_LOCATION=./library\n', env)
             self.assertIn('DB_DATA_LOCATION=./postgres\n', env)
-            self.assertIn('IMMICH_PORT=2294\n', env)
+            self.assertIn('IMMICH_HTTP_PORT=2294\n', env)
+            self.assertNotIn('IMMICH_PORT=', env)
+            self.assertIn('${IMMICH_HTTP_PORT:-2283}:2283', (root / 'compose.yaml').read_text())
             self.assertIn('COMPOSE_PROJECT_NAME=immich-test\n', env)
             self.assertEqual((root / '.env').stat().st_mode & 0o777, 0o600)
             self.assertTrue((root / 'library').is_dir())
@@ -58,7 +60,7 @@ class SetupTests(unittest.TestCase):
                 root = Path(temp) / 'instance'
                 state = manager.initialize(root, 'valid', port, 44, 109, 'test-image:fixed')
                 self.assertEqual(state['port'], port)
-                self.assertIn(f'IMMICH_PORT={port}\n', (root / '.env').read_text())
+                self.assertIn(f'IMMICH_HTTP_PORT={port}\n', (root / '.env').read_text())
 
     def test_構成ファイルの手動変更を検出する(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -67,6 +69,19 @@ class SetupTests(unittest.TestCase):
             (root / 'compose.yaml').write_text('services: {}\n')
             with self.assertRaises(ValueError):
                 manager.load_instance(root)
+
+    def test_明示した再ビルドだけ推論イメージを更新する(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'instance'
+            manager.initialize(root, 'valid', 2294, 44, 109, 'old-image:fixed')
+            old_env = (root / '.env').read_text()
+            with self.assertRaises(ValueError):
+                manager.initialize(root, 'valid', 2294, 44, 109, 'new-image:fixed')
+            manager.initialize(root, 'valid', 2294, 44, 109, 'new-image:fixed', replace_image=True)
+            self.assertEqual((root / '.env').read_text(), old_env.replace('old-image:fixed', 'new-image:fixed'))
+            self.assertEqual(manager.load_instance(root)['image'], 'new-image:fixed')
+            with self.assertRaises(ValueError):
+                manager.initialize(root, 'wrong-project', 2294, 44, 109, 'new-image:fixed', replace_image=True)
 
     def test_別ディレクトリにコピーされた管理情報を拒否する(self):
         with tempfile.TemporaryDirectory() as temp:
