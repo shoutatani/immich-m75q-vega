@@ -1,0 +1,26 @@
+name: スクリプト検証
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: 導入先の保護と設定生成
+        run: python3 -m unittest discover -s tests -v
+      - name: Pythonとシェルの構文
+        run: |
+          python3 -m compileall -q scripts checks patches
+          bash -n setup.sh gpu-build/build-device.sh
+      - name: Compose構成
+        run: |
+          python3 - <<'PY'
+          import importlib.util
+          from pathlib import Path
+          spec = importlib.util.spec_from_file_location('manager', 'scripts/manage.py')
+          manager = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(manager)
+          manager.initialize(Path('/tmp/immich-ci'), 'immich-ci', 2294, 44, 109, 'test-image:fixed')
+          PY
+          docker compose --project-directory /tmp/immich-ci --env-file /tmp/immich-ci/.env -f /tmp/immich-ci/compose.yaml config --quiet
