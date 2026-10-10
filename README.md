@@ -1,26 +1,28 @@
-# ImmichをM75q-1のVega 11で動かす
+# Run Immich on the M75q-1's Vega 11
 
-ThinkCentre M75q-1 / Ryzen 5 PRO 3400GEの内蔵GPUで、Immichの**スマート検索・顔検出と顔特徴抽出・OCR**を動かすためのセットアップです。
+English | [日本語](README.ja.md)
 
-写真は `library`、DBは `postgres` に保存する、Immichの標準的なDocker Compose構成です。外付けHDD、外部ライブラリ、クラウドバックアップなどの個別設定は含めていません。GPU対応に必要な推論用イメージを実機でビルドします。
+This setup enables Immich's **smart search, face detection and face feature extraction, and OCR** on the integrated GPU of a ThinkCentre M75q-1 with a Ryzen 5 PRO 3400GE.
 
-**Immich v3.2.0専用の非公式構成です。** 古いVegaをROCmで動かす互換設定と、Immich側のOCR修正を含みます。既存のImmichを変換・更新するツールではありません。
+It uses a standard Immich Docker Compose layout, with photos in `library` and the database in `postgres`. It does not include external HDD, external library, or cloud backup configuration. The machine learning image required for GPU support is built on the target machine.
 
-## 対象環境
+**This is an unofficial setup specifically for Immich v3.2.0.** It includes compatibility settings for running an older Vega GPU with ROCm and patches to Immich's OCR implementation. It is not a migration or upgrade tool for existing Immich installations.
 
-- ThinkCentre M75q-1、Ryzen 5 PRO 3400GE、内蔵Radeon Vega 11（gfx902）。
-- Ubuntu 24.04 LTS / x86_64。検証機はLinux 6.8、メモリ32 GB。
-- `/dev/kfd` と `/dev/dri/renderD128` が存在すること。
-- Docker EngineとDocker Compose v2が導入済みで、実行ユーザーが `docker info` を実行できること。
-- Python 3.11以降、`curl`、`tar`、`dpkg-deb`、`git`。
-- Docker保存先と導入先に十分な空き容量。写真用とは別に100 GiB以上を推奨。
-- GitHub、AMDのパッケージ配布先、GHCR、および学習済みモデルの配布先への通信。
+## Requirements
 
-Dockerの導入は[Docker公式のUbuntu向け手順](https://docs.docker.com/engine/install/ubuntu/)を参照してください。セットアップは一般ユーザーで実行します。ホストのGPUドライバー、カーネル、BIOS設定は変更しません。
+- ThinkCentre M75q-1 with a Ryzen 5 PRO 3400GE and integrated Radeon Vega 11 (gfx902).
+- Ubuntu 24.04 LTS / x86_64. The test machine runs Linux 6.8 and has 32 GB of RAM.
+- Both `/dev/kfd` and `/dev/dri/renderD128` must be present.
+- Docker Engine and Docker Compose v2, with permission to run `docker info` as the current user.
+- Python 3.11 or later, `curl`, `tar`, `dpkg-deb`, and `git`.
+- Sufficient free space for Docker and the installation directory. At least 100 GiB is recommended, excluding photo storage.
+- Network access to GitHub, AMD's package repositories, GHCR, and the model download services.
 
-## 導入
+To install Docker, follow the [official Docker instructions for Ubuntu](https://docs.docker.com/engine/install/ubuntu/). Run this setup as a regular user. It does not change the host GPU driver, kernel, or BIOS settings.
 
-M75q-1上で実行します。Mac上でGPUイメージをビルドする手順ではありません。
+## Installation
+
+Run these commands on the M75q-1. The GPU image is not built on a Mac.
 
 ```bash
 git clone https://github.com/shoutatani/immich-m75q-vega.git
@@ -28,29 +30,29 @@ cd immich-m75q-vega
 ./setup.sh
 ```
 
-初期値は次のとおりです。
+Defaults:
 
-| 項目 | 値 |
+| Setting | Value |
 | --- | --- |
-| 導入先 | `~/immich-app` |
-| ブラウザで開くポート | `2283` |
-| 写真 | `~/immich-app/library` |
-| DB | `~/immich-app/postgres` |
-| Composeプロジェクト | `immich-m75q` |
-| モデルとGPUキャッシュ | プロジェクト専用Dockerボリューム |
-| OCRモデル | `PP-OCRv5_mobile`（Immichの標準値） |
-| 顔認識モデル | `buffalo_l`（Immichの標準値） |
-| スマート検索モデル | `ViT-B-32__openai`（Immichの標準値） |
+| Installation directory | `~/immich-app` |
+| Browser access port | `2283` |
+| Photos | `~/immich-app/library` |
+| Database | `~/immich-app/postgres` |
+| Compose project | `immich-m75q` |
+| Model and GPU caches | A dedicated Docker volume for the project |
+| OCR model | `PP-OCRv5_mobile` (Immich default) |
+| Face recognition model | `buffalo_l` (Immich default) |
+| Smart search model | `ViT-B-32__openai` (Immich default) |
 
-セットアップは依存ファイルの取得・SHA256確認、gfx900向けライブラリのビルド、専用イメージの作成、OCRの初回GPU準備、Immichの起動を順に実行します。初回は数十分かかることがあります。モデルの準備中は時間がかかってもログを確認して待ってください。
+The setup downloads dependencies, verifies their SHA256 checksums, builds the gfx900 libraries, creates the custom image, prepares OCR for its first GPU run, and starts Immich. The first installation can take tens of minutes. Monitor the logs and allow time for model preparation to finish.
 
-完了したら `http://M75q-1のIPアドレス:2283` を開き、通常のImmichと同じように管理者を登録します。DB用パスワードは自動生成され、導入先の `.env` に所有者だけが読める権限で保存されます。アプリ用の管理者は自動作成しません。
+Once complete, open `http://YOUR-M75Q-1-IP:2283` and register an administrator as you would with a standard Immich installation. A database password is generated automatically and saved in the installation directory's `.env` file with owner-only access. The setup does not create an application administrator automatically.
 
-写真に写っている文字を検索するときは、Immichの検索タイプで「OCR」を選んでください。写真の内容を探すスマート検索とは用途が異なります。
+To search for text visible in photos, select the **OCR** search type in Immich. Smart search is for finding photos by their content.
 
-標準と同じくポートは全インターフェースで待ち受けます。インターネットへの公開方法はこのリポジトリの対象外です。
+As with the standard configuration, the port listens on all network interfaces. Publishing the service to the internet is outside the scope of this repository.
 
-### 別の場所やポートで試す
+### Use a different directory and port
 
 ```bash
 ./setup.sh install \
@@ -59,79 +61,96 @@ cd immich-m75q-vega
   --port 2294
 ```
 
-導入先、プロジェクト名、ポートをすべて分けてください。DB・写真・ネットワーク・キャッシュも別になります。固定コンテナ名や既存の外部ボリュームは使いません。物理GPU・CPU・メモリは同じホスト上で共有するので、大量の処理を同時実行すると競合します。
+Use a separate directory, project name, and port. The database, photos, network, and caches will also be separate. This setup does not use fixed container names or existing external volumes. The physical GPU, CPU, and memory are still shared with other workloads on the host, so concurrent heavy processing can cause resource contention.
 
-空でない未管理ディレクトリ、別環境と同じプロジェクト名、使用中のポートには導入しません。途中で通信が失敗した場合は、同じ版のソース・同じオプションで再実行できます。自動で写真やDBを削除する処理はありません。
+The installer refuses to use a nonempty unmanaged directory, a project name belonging to another installation, or an occupied port. If a network request fails, rerun the same version of the source with the same options. The installer never automatically deletes photos or the database.
 
-## 動作確認
+## Verification
 
-まず状態を確認します。
+First, check the status:
 
 ```bash
 ./setup.sh status
 ```
 
-管理者登録後、次のコマンドでアプリを含めた検証を実行できます。管理者のメールとパスワードを対話入力します。
+After registering an administrator, run the following command to verify the installation, including the application. It prompts for the administrator's email and password.
 
 ```bash
 ./setup.sh verify
 ```
 
-この検証は見本画像をアップロードし、**この導入先の推論コンテナを一度再起動**します。画像を処理していない時間に実行してください。結果は導入先の `evidence/verification.json` に保存します。
+This uploads sample images and **restarts this installation's machine learning container once**. Run it when no images are being processed. Results are saved to `evidence/verification.json` in the installation directory.
 
-- 日本語の免許証見本と白紙で、CPUとGPUのOCR結果を比較。
-- 顔画像で、顔検出・512次元の顔特徴抽出・スマート検索の特徴抽出を確認。
-- ONNX Runtimeの実行記録で、各処理にMIGraphXの実行があり、CPU実行イベントが0であることを確認。
-- アプリへのアップロード、OCR結果の保存、「運転免許証」のOCR検索、顔情報の保存を確認。
-- 推論コンテナを再起動し、チェックサムが異なる画像をアップロードして再検証。
+- Compare CPU and GPU OCR results using a fictional Japanese driver's license sample and a blank image.
+- Check face detection, 512-dimensional face feature extraction, and smart search feature extraction using a face image.
+- Check ONNX Runtime profiles for MIGraphX execution and zero CPU execution events for each model.
+- Check uploads, stored OCR results, OCR search for `運転免許証` (driver's license), and stored face information.
+- Restart the machine learning container, upload images with different checksums, and repeat the application checks.
 
-新規の使い捨てテスト環境なら、検証専用管理者を自動登録できます。
+For a new disposable test installation, you can create a test administrator automatically:
 
 ```bash
 ./setup.sh verify --directory "$HOME/immich-gpu-test" --initialize-test-admin
 ```
 
-このオプションはユーザー未登録の環境専用です。認証情報は導入先の `test-admin-credentials.json` に保存し、ログには出しません。検証画像とアカウントは確認用に残ります。
+This option is intended for installations with no registered users. Credentials are saved to `test-admin-credentials.json` in the installation directory and are not printed in logs. The test images and account remain available for inspection.
 
-## 日常の操作
+## Everyday commands
 
-独自の導入先を使った場合は、それぞれに `--directory` を付けます。
+If you use a custom installation directory, add `--directory` to each command.
+
+Check container status:
 
 ```bash
-# コンテナの状態
 ./setup.sh status
-# 推論ログ
+```
+
+View machine learning logs:
+
+```bash
 ./setup.sh compose -- logs --tail 100 immich-machine-learning
-# 停止（データは保持）
+```
+
+Stop containers while retaining data:
+
+```bash
 ./setup.sh compose -- stop
-# 再開
+```
+
+Start them again:
+
+```bash
 ./setup.sh compose -- up -d
-# OCRの準備をやり直す（通常は不要）
+```
+
+Repeat OCR preparation (normally unnecessary):
+
+```bash
 ./setup.sh warmup
 ```
 
-`compose` は、このツールの管理情報がある導入先だけでDocker Composeを実行します。導入先の `compose.yaml` が変更されていると検出して停止します。手動変更する場合は、導入先で通常の `docker compose` を使い、変更内容を管理してください。
+The `compose` command runs Docker Compose only for directories containing this tool's installation metadata. It detects changes to the installation's `compose.yaml` and stops if the file has been modified. For manual changes, use the regular `docker compose` command in the installation directory and keep track of your changes.
 
-## 何を変更しているか
+## What this changes
 
-[仕組みと固定バージョン](docs/architecture.md)にまとめています。大きく分けると以下です。
+See [Architecture and pinned versions](docs/architecture.md) (Japanese). The main changes are:
 
-1. Vega 11を近いgfx900として扱う互換設定。
-2. gfx900向けrocBLAS演算データの追加と、MIGraphXのGPU用ライブラリのビルド。
-3. モデル再ロード時に問題が出たGPU転送経路の回避。
-4. OCRの入力サイズ別キャッシュと入力サイズの整理、初回GPU準備。
+1. Compatibility settings that treat Vega 11 as the similar gfx900 architecture.
+2. Additional gfx900 rocBLAS computation data and a build of the MIGraphX GPU device library.
+3. A workaround for the GPU data transfer path that caused errors when reloading models.
+4. OCR caches separated by input shape, standardized input sizes, and initial GPU preparation.
 
-Immichのサーバー・DB・Valkeyのイメージは公式のものを使います。変更するのは推論用イメージとその実行設定です。OCRの3つの独自設定は、同梱のパッチを適用したイメージでのみ有効です。
+The Immich server, database, and Valkey use official images. Only the machine learning image and its runtime settings are customized. The three custom OCR settings work only with the included patches applied to the image.
 
-## 制限と更新
+## Limitations and updates
 
-- 3400GE以外のGPU、他のOS・カーネルでの動作は未確認です。
-- 検証用画像で処理系を確認します。実物の免許証や細かい文字の認識精度を保証するものではありません。
-- 長い文字列などで未準備の入力サイズが発生すると、追加のGPUコンパイルが必要になる場合があります。
-- 動画のGPUトランスコードは設定していません。
-- バージョンを自動更新しません。同じv3.2.0用のソースを修正した開発時は、`install --rebuild` で推論イメージを作り直せます（導入先・プロジェクト名・ポートは元と同じものを指定）。写真・DB・管理者設定は保持します。ImmichやROCmを更新するときはパッチを見直し、分離環境で再検証してください。
-- 写真とDBのバックアップは別途必要です。[Immichのバックアップ手順](https://docs.immich.app/administration/backup-and-restore/)を参照してください。
+- Other GPUs, operating systems, and kernels have not been tested.
+- Sample images verify the processing pipeline. They do not guarantee recognition accuracy for real driver's licenses or small text.
+- Previously unseen input sizes, such as those needed for long lines of text, may trigger additional GPU compilation.
+- GPU video transcoding is not configured.
+- Versions are not updated automatically. When developing changes to the same v3.2.0 source, use `install --rebuild` to rebuild the machine learning image, specifying the original directory, project name, and port. Photos, the database, and administrator settings are retained. When updating Immich or ROCm, review the patches and verify them in an isolated environment first.
+- Set up photo and database backups separately. See the [Immich backup instructions](https://docs.immich.app/administration/backup-and-restore/).
 
-[検証結果](docs/validation.md) / [出典とライセンス](THIRD_PARTY_NOTICES.md)
+[Validation results](docs/validation.md) (Japanese) / [Sources and licenses](THIRD_PARTY_NOTICES.md) (Japanese)
 
-このリポジトリはGPT-6 Astraによる実機調査・修正をもとに、配布用スクリプトと検証手順へ整理しています。Immich・AMD・Lenovoの公式プロジェクトではありません。
+This repository turns the hardware investigation and fixes performed by GPT-6 Astra into reusable setup scripts and verification steps. It is not an official Immich, AMD, or Lenovo project.
