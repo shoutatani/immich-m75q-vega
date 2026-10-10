@@ -8,6 +8,8 @@ It uses a standard Immich Docker Compose layout, with photos in `library` and th
 
 **This is an unofficial setup specifically for Immich v3.2.0.** It includes compatibility settings for running an older Vega GPU with ROCm and patches to Immich's OCR implementation. It is not a migration or upgrade tool for existing Immich installations.
 
+> **Before production use:** This repository remains pinned to the older Immich v3.2.0 server version used for GPU verification. After verifying GPU operation, we recommend upgrading to an up-to-date stable release with security fixes before using it in production. This setup does not perform that upgrade automatically. Back up your photos and database, follow the official upgrade instructions, and review the custom machine learning image and OCR patches for compatibility. Verify GPU inference and OCR again in an isolated environment; newer versions have not been validated by this repository.
+
 ## Requirements
 
 - ThinkCentre M75q-1 with a Ryzen 5 PRO 3400GE and integrated Radeon Vega 11 (gfx902).
