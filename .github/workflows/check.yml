@@ -11,7 +11,7 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: Pythonとシェルの構文
         run: |
-          python3 -m compileall -q scripts checks patches
+          python3 -m compileall -q scripts checks
           bash -n setup.sh gpu-build/build-device.sh
       - name: Compose構成
         run: |

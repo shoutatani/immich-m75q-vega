@@ -4,12 +4,9 @@ import argparse
 import getpass
 import importlib.util
 import json
-import math
 import os
 from pathlib import Path
 import secrets
-import shutil
-import subprocess
 import struct
 import zlib
 import sys
@@ -100,29 +97,18 @@ assert config['machineLearning']['clip']['modelName'] == 'ViT-B-32__openai'
 for key in ['ocr','facialRecognition','clip']:
     assert config['machineLearning'][key]['enabled'], key
 
-print('OCRのCPU/GPU比較と実行プロファイルを確認します', flush=True)
-exec_ml('mkdir','-p','/tmp/immich-ocr-check')
-exec_ml('cp','/opt/immich-m75q/samples/license-sample.png','/opt/immich-m75q/samples/blank.png','/tmp/immich-ocr-check/')
+version = api('/server/version')
+assert tuple(version[key] for key in ['major','minor','patch']) == (3,3,1), version
+assert version.get('prerelease') is None, version
+print('6種類のモデルをCPU/GPUで比較し、実行プロファイルを確認します',flush=True)
 for backend in ['cpu','gpu']:
-    command = ['python','/opt/immich-m75q/checks/diagnose-ocr.py','--backend',backend,'--label',backend,'--model','PP-OCRv5_mobile','--images','license-sample.png','blank.png']
-    if backend == 'gpu':
-        command.append('--profile')
-    exec_ml(*command)
-exec_ml('python','/opt/immich-m75q/checks/compare-ocr.py','/tmp/immich-ocr-check')
-print('顔検出・顔特徴抽出・画像検索のCPU/GPU比較を確認します', flush=True)
-for backend in ['cpu','gpu']:
-    exec_ml('python','/opt/immich-m75q/checks/profile-face-clip.py','--backend',backend)
-m.run(m.compose(directory, 'cp', 'immich-machine-learning:/tmp/immich-ocr-check/.', str(evidence / 'inference')))
-cpu = json.loads((evidence/'inference/face-clip-cpu.json').read_text())
-gpu = json.loads((evidence/'inference/face-clip-gpu.json').read_text())
-assert cpu['faces'] == gpu['faces'] and cpu['faces'] >= 1
-similarities = {}
-for key, a, b in [('face',cpu['faceVectors'][0],gpu['faceVectors'][0]), *[(key,cpu[key],gpu[key]) for key in ['clip-visual','clip-textual']]]:
-    cosine = sum(x*y for x,y in zip(a,b)) / math.sqrt(sum(x*x for x in a)*sum(y*y for y in b))
-    assert cosine > 0.99, (key,cosine)
-    similarities[key] = cosine
+    exec_ml('python','/opt/immich-m75q/checks/profile-models.py','--backend',backend)
+exec_ml('python','/opt/immich-m75q/checks/compare-results.py','/tmp/immich-gpu-check')
+m.run(m.compose(directory,'cp','immich-machine-learning:/tmp/immich-gpu-check/.',str(evidence/'inference')))
+comparison=json.loads((evidence/'inference/comparison.json').read_text())
+similarities=comparison['cosineSimilarities']
 
-results = {'status':'running','image':state['image'],'ocrModel':'PP-OCRv5_mobile','cosineSimilarities':similarities,'rounds':[]}
+results = {'status':'running','serverVersion':version,'image':state['image'],'ocrModel':'PP-OCRv5_mobile','cosineSimilarities':similarities,'rounds':[]}
 for round_number in range(2):
     if round_number:
         print('推論コンテナを再起動し、別の画像でも再検証します', flush=True)

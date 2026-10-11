@@ -2,6 +2,5 @@
 !.build/
 !.build/rocblas-extracted/**
 !.build/device-build/libmigraphx_device.so.2015000.0.70200
-!patches/**
 !checks/**
 !samples/**

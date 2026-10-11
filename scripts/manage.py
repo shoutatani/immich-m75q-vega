@@ -17,7 +17,8 @@ import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE = 'ghcr.io/immich-app/immich-machine-learning:v3.2.0-rocm@sha256:ec7d7ec1e624571edd92efd0c4820c8eda91c21956140b87fc2af93e0f33dc86'
+VERSION = 'v3.3.1'
+BASE = 'ghcr.io/immich-app/immich-machine-learning:v3.3.1-rocm@sha256:0936fa0414903164315c9c80a9f2c2a6ed9b8387ce05decbfe606d1d54e7a2ca'
 MARKER = '.m75q-instance.json'
 DOWNLOADS = {
     'rocblas.deb': ('https://repo.radeon.com/rocm/apt/6.3.4/pool/main/r/rocblas/rocblas_4.3.0.60304-76~24.04_amd64.deb', '280fc07652f998046fdcfa68dcde9708c82860269c53e3ca83bd3d164a7a2c32'),
@@ -36,13 +37,13 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 def image_tag():
-    h = hashlib.sha256()
-    for folder in ['gpu-build', 'patches', 'checks', 'samples']:
+    h = hashlib.sha256(BASE.encode())
+    for folder in ['gpu-build', 'checks', 'samples']:
         for path in sorted((ROOT / folder).rglob('*')):
             if path.is_file() and '__pycache__' not in path.parts:
                 h.update(str(path.relative_to(ROOT)).encode())
                 h.update(path.read_bytes())
-    return 'immich-m75q-vega-ml:v3.2.0-' + h.hexdigest()[:12]
+    return 'immich-m75q-vega-ml:' + VERSION + '-' + h.hexdigest()[:12]
 
 def load_instance(directory):
     directory = Path(directory).expanduser().resolve()
@@ -63,6 +64,10 @@ def initialize(directory, project, port, video_gid, render_gid, image, replace_i
     expected = dict(format=1, directory=str(directory), project=project, port=port, image=image)
     if (directory / MARKER).exists():
         state = load_instance(directory)
+        if f'IMMICH_VERSION={VERSION}' not in (directory / '.env').read_text().splitlines():
+            raise ValueError('旧版の環境は自動更新しません。別の新規ディレクトリで検証し、バックアップ後に更新手順を確認してください')
+        if state['compose_sha256'] != digest(ROOT / 'compose.yaml'):
+            raise ValueError('導入先と配布版のCompose構成が異なります。新規の分離環境で検証し、構成の更新手順を確認してください')
         if any(state.get(k) != v for k, v in expected.items() if k != 'image'):
             raise ValueError('既存の導入設定と異なります。別の新規ディレクトリを指定してください')
         if state['image'] != image:
@@ -86,7 +91,7 @@ def initialize(directory, project, port, video_gid, render_gid, image, replace_i
     shutil.copyfile(ROOT / 'compose.yaml', directory / 'compose.yaml')
     env = '\n'.join([
         'COMPOSE_PROJECT_NAME=' + project,
-        'IMMICH_VERSION=v3.2.0',
+        'IMMICH_VERSION=' + VERSION,
         'UPLOAD_LOCATION=./library',
         'DB_DATA_LOCATION=./postgres',
         'DB_USERNAME=postgres',
@@ -181,7 +186,7 @@ def build_image(image):
     run(['docker', 'build', '-f', ROOT / 'gpu-build/Dockerfile', '-t', image, ROOT])
 
 def warmup(directory):
-    print('OCRのGPU準備を開始します。初回は十数分〜数十分かかります', flush=True)
+    print('顔・スマート検索・OCRのGPU準備を開始します。初回は数十分かかります', flush=True)
     run(compose(directory, 'run', '--rm', '--no-deps', '-T', '--entrypoint', 'python', 'immich-machine-learning', '/opt/immich-m75q/checks/warmup-ocr.py'))
 
 def install(args, directory):

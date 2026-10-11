@@ -6,9 +6,9 @@ This setup enables Immich's **smart search, face detection and face feature extr
 
 It uses a standard Immich Docker Compose layout, with photos in `library` and the database in `postgres`. It does not include external HDD, external library, or cloud backup configuration. The machine learning image required for GPU support is built on the target machine.
 
-**This is an unofficial setup specifically for Immich v3.2.0.** It includes compatibility settings for running an older Vega GPU with ROCm and patches to Immich's OCR implementation. It is not a migration or upgrade tool for existing Immich installations.
+**This is an unofficial setup specifically for Immich v3.3.1.** It includes compatibility settings for running an older Vega GPU with ROCm and GPU libraries; OCR uses Immich 3.3.1's official implementation. It is not a migration or upgrade tool for existing Immich installations.
 
-> **Before production use:** This repository remains pinned to the older Immich v3.2.0 server version used for GPU verification. After verifying GPU operation, we recommend upgrading to an up-to-date stable release with security fixes before using it in production. This setup does not perform that upgrade automatically. Back up your photos and database, follow the official upgrade instructions, and review the custom machine learning image and OCR patches for compatibility. Verify GPU inference and OCR again in an isolated environment; newer versions have not been validated by this repository.
+> **Updates during operation:** This repository is pinned to the hardware-validated Immich v3.3.1 release. Keep checking for stable releases and security fixes. Back up photos and the database, follow the official upgrade instructions, and check compatibility with the custom GPU libraries. Verify GPU inference and OCR in an isolated environment before applying a new version. This installer does not automatically update versions or migrate an existing v3.2.0 installation.
 
 ## Requirements
 
@@ -46,7 +46,7 @@ Defaults:
 | Face recognition model | `buffalo_l` (Immich default) |
 | Smart search model | `ViT-B-32__openai` (Immich default) |
 
-The setup downloads dependencies, verifies their SHA256 checksums, builds the gfx900 libraries, creates the custom image, prepares OCR for its first GPU run, and starts Immich. The first installation can take tens of minutes. Monitor the logs and allow time for model preparation to finish.
+The setup downloads dependencies, verifies their SHA256 checksums, builds the gfx900 libraries, creates the custom image, prepares face recognition, smart search, and OCR for their first GPU runs, and starts Immich. The first installation can take tens of minutes. Monitor the logs and allow time for model preparation to finish.
 
 Once complete, open `http://YOUR-M75Q-1-IP:2283` and register an administrator as you would with a standard Immich installation. A database password is generated automatically and saved in the installation directory's `.env` file with owner-only access. The setup does not create an application administrator automatically.
 
@@ -125,7 +125,7 @@ Start them again:
 ./setup.sh compose -- up -d
 ```
 
-Repeat OCR preparation (normally unnecessary):
+Repeat GPU preparation (normally unnecessary):
 
 ```bash
 ./setup.sh warmup
@@ -140,9 +140,9 @@ See [Architecture and pinned versions](docs/architecture.md) (Japanese). The mai
 1. Compatibility settings that treat Vega 11 as the similar gfx900 architecture.
 2. Additional gfx900 rocBLAS computation data and a build of the MIGraphX GPU device library.
 3. A workaround for the GPU data transfer path that caused errors when reloading models.
-4. OCR caches separated by input shape, standardized input sizes, and initial GPU preparation.
+4. Input-shape caches provided by the official 3.3.1 implementation, with initial GPU preparation using the default models and sample images.
 
-The Immich server, database, and Valkey use official images. Only the machine learning image and its runtime settings are customized. The three custom OCR settings work only with the included patches applied to the image.
+The Immich server, database, and Valkey use official images. Only the machine learning image and its runtime settings are customized. The old 3.2.0 OCR patches and custom settings have been removed. Model revision `main` (the legacy model exports) is used; the new `v2` exports are outside the tested scope.
 
 ## Limitations and updates
 
@@ -150,7 +150,7 @@ The Immich server, database, and Valkey use official images. Only the machine le
 - Sample images verify the processing pipeline. They do not guarantee recognition accuracy for real driver's licenses or small text.
 - Previously unseen input sizes, such as those needed for long lines of text, may trigger additional GPU compilation.
 - GPU video transcoding is not configured.
-- Versions are not updated automatically. When developing changes to the same v3.2.0 source, use `install --rebuild` to rebuild the machine learning image, specifying the original directory, project name, and port. Photos, the database, and administrator settings are retained. When updating Immich or ROCm, review the patches and verify them in an isolated environment first.
+- Versions are not updated automatically. When developing changes to the same v3.3.1 source, use `install --rebuild` to rebuild the machine learning image, specifying the original directory, project name, and port. Photos, the database, and administrator settings are retained. `--rebuild` only rebuilds the image within the same Immich version; mixing a 3.3.1 ML image into a v3.2.0 installation is rejected. When updating Immich or ROCm, check GPU library compatibility and verify in an isolated environment first.
 - Set up photo and database backups separately. See the [Immich backup instructions](https://docs.immich.app/administration/backup-and-restore/).
 
 [Validation results](docs/validation.md) (Japanese) / [Sources and licenses](THIRD_PARTY_NOTICES.md) (Japanese)

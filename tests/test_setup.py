@@ -1,6 +1,7 @@
 """導入先保護と設定生成を、実際の一時ディレクトリで検証する。"""
 import importlib.util
 import json
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -10,6 +11,42 @@ manager = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(manager)
 
 class SetupTests(unittest.TestCase):
+    def test_サーバーと推論イメージが331で揃う(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'instance'
+            manager.initialize(root, 'valid', 2295, 44, 109, manager.image_tag())
+            self.assertIn('IMMICH_VERSION=v3.3.1\n', (root / '.env').read_text())
+            self.assertIn('immich-server:v3.3.1', (root / 'compose.yaml').read_text())
+            self.assertTrue(manager.image_tag().startswith('immich-m75q-vega-ml:v3.3.1-'))
+
+    def test_旧バージョンの環境は再ビルドでも変更しない(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'instance'
+            manager.initialize(root, 'valid', 2295, 44, 109, 'old-image:fixed')
+            env = root / '.env'
+            env.write_text(re.sub(r'IMMICH_VERSION=[^\n]+', 'IMMICH_VERSION=v3.2.0', env.read_text()))
+            before = {name: (root / name).read_bytes() for name in ['.env', 'compose.yaml', manager.MARKER]}
+            with self.assertRaises(ValueError):
+                manager.initialize(root, 'valid', 2295, 44, 109, 'new-image:fixed', replace_image=True)
+            for name, content in before.items():
+                self.assertEqual((root / name).read_bytes(), content)
+
+    def test_envだけ更新した旧構成も再ビルドで変更しない(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'instance'
+            manager.initialize(root, 'valid', 2295, 44, 109, 'old-image:fixed')
+            compose = root / 'compose.yaml'
+            compose.write_text(compose.read_text().replace('immich-server:v3.3.1', 'immich-server:v3.2.0'))
+            marker = root / manager.MARKER
+            state = json.loads(marker.read_text())
+            state['compose_sha256'] = manager.digest(compose)
+            marker.write_text(json.dumps(state))
+            before = {name: (root / name).read_bytes() for name in ['.env', 'compose.yaml', manager.MARKER]}
+            with self.assertRaises(ValueError):
+                manager.initialize(root, 'valid', 2295, 44, 109, 'new-image:fixed', replace_image=True)
+            for name, content in before.items():
+                self.assertEqual((root / name).read_bytes(), content)
+
     def test_標準保存先と指定ポートで設定される(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / 'instance'

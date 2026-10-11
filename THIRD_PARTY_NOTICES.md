@@ -4,12 +4,12 @@
 
 ## Immich
 
-`patches/ort.py`、`patches/detection.py`、`patches/recognition.py` はImmich v3.2.0のソースを基にした修正版です。`compose.yaml` は同バージョンの公式Docker Compose構成を基にしています。
+`compose.yaml` はImmich v3.3.1の公式Docker Compose構成を基にしています。推論コンテナは公式の `v3.3.1-rocm` イメージを基にします。旧3.2.0版で同梱したImmich由来のOCR修正版3ファイルは、現在の構成から削除しました（Git履歴の当該コードにはAGPL v3が適用されます）。
 
 - 原著作権者: Immichの各貢献者
 - ライセンス: GNU Affero General Public License v3
-- ソース: https://github.com/immich-app/immich/tree/v3.2.0
-- 改変内容: `docs/architecture.md`
+- ソース: https://github.com/immich-app/immich/tree/v3.3.1
+- 構成の変更内容: `docs/architecture.md`
 
 ## AMD ROCm / MIGraphX
 
